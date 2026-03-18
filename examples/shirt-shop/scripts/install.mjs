@@ -25,13 +25,20 @@ async function main() {
   const packageJson = JSON.parse(await fs.readFile('./package.json', 'utf8'));
   const templatePackageJson = { ...packageJson };
 
-  // Replace workspace dependencies with real versions
+  // Replace workspace and catalog dependencies with real versions
   for (const [dep, version] of Object.entries(
     templatePackageJson.dependencies || {},
   )) {
-    if (version.startsWith('workspace:')) {
-      // Replace workspace dependencies with "latest" versions
+    if (version.startsWith('workspace:') || version.startsWith('catalog:')) {
       templatePackageJson.dependencies[dep] = 'latest';
+    }
+  }
+
+  for (const [dep, version] of Object.entries(
+    templatePackageJson.devDependencies || {},
+  )) {
+    if (version.startsWith('workspace:') || version.startsWith('catalog:')) {
+      templatePackageJson.devDependencies[dep] = 'latest';
     }
   }
 
