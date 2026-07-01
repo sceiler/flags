@@ -1,20 +1,19 @@
 ---
 name: flags-sdk
 description: >
-  Comprehensive guide for implementing feature flags and A/B tests using the Flags SDK (the `flags` npm package)
-  and Vercel Flags (Vercel's feature flags platform, managed via dashboard or `vercel flags` CLI).
-  Use when: (1) Creating or declaring feature flags with `flag()`, (2) Using Vercel Flags with `vercelAdapter()` or
-  the `vercel flags` CLI (`add`, `list`, `enable`, `disable`, `inspect`, `archive`, `rm`, `sdk-keys`),
-  (3) Setting up feature flag providers/adapters (Vercel, Statsig, LaunchDarkly, PostHog, GrowthBook, Hypertune,
-  Edge Config, OpenFeature, Flagsmith, Reflag, Split, Optimizely, or custom adapters),
-  (4) Implementing precompute patterns for static pages with feature flags,
-  (5) Setting up evaluation context with `identify` and `dedupe`, (6) Integrating the Flags Explorer / Vercel Toolbar,
-  (7) Working with feature flags in Next.js (App Router, Pages Router, Middleware) or SvelteKit,
-  (8) Writing custom adapters, (9) Encrypting/decrypting flag values for the toolbar,
-  (10) Any task involving the `flags`, `flags/next`, `flags/sveltekit`, `flags/react`, or `@flags-sdk/*` packages.
-  Triggers on: feature flags, A/B testing, experimentation, flags SDK, flag adapters, precompute flags,
+  Guide for feature flags and A/B tests with the Flags SDK (`flags` npm package) and Vercel Flags.
+  Use when: declaring flags with `flag()`, using `vercelAdapter` or `vercel flags` CLI
+  (add, list, enable, disable, inspect, archive, rm, sdk-keys),
+  setting up providers/adapters (Vercel, Statsig, LaunchDarkly, PostHog, GrowthBook, Hypertune,
+  Edge Config, OpenFeature, Split, Flagsmith, Reflag, Optimizely, or custom adapters),
+  implementing precompute patterns for static pages, setting up `identify`/`dedupe`,
+  integrating Flags Explorer/Toolbar,
+  working with flags in Next.js (App Router, Pages Router, Middleware) or SvelteKit,
+  writing custom adapters, or encrypting/decrypting flag values.
+  Triggers: feature flags, A/B testing, experimentation, flags SDK, flag adapters, precompute,
   Flags Explorer, feature gates, flag overrides, Vercel Flags, vercel flags CLI, vercel flags add,
-  vercel flags list, vercel flags enable, vercel flags disable.
+  vercel flags list, vercel flags enable, vercel flags disable,
+  `flags/next`, `flags/sveltekit`, `flags/react`, `@flags-sdk/*`.
 ---
 
 # Flags SDK
@@ -55,9 +54,11 @@ import { vercelAdapter } from '@flags-sdk/vercel';
 
 export const exampleFlag = flag({
   key: 'example-flag',
-  adapter: vercelAdapter(),
+  adapter: vercelAdapter,
 });
 ```
+
+> **Version note**: The SDK is published as `flags` (renamed from `@vercel/flags`; that old name still appears in changelog history). `flags` 4.2.0+ accepts the adapter factory by reference (`adapter: vercelAdapter`) and resolves it once per declaration. Older versions require calling it (`adapter: vercelAdapter()`). The called form still works on new versions, so prefer the shorthand unless you're targeting `flags` < 4.2.0.
 
 ## Agent workflow: Creating a new flag
 
@@ -88,16 +89,16 @@ Check the project state to adapt commands and decide which steps you can skip:
 
    Before running `vercel flags add`, verify the project is linked to Vercel. Check for a `.vercel` directory in the project root. If it doesn't exist, run `vercel link` first.
 
-3. **Pull environment variables**: Run `vercel env pull` to write `FLAGS` and `FLAGS_SECRET` to `.env.local`. Without these environment variables, `vercelAdapter()` will not be able to evaluate flags. This step is **mandatory** after creating a flag.
+3. **Pull environment variables**: Run `vercel env pull` to write `FLAGS` and `FLAGS_SECRET` to `.env.local`. Without these environment variables, `vercelAdapter` will not be able to evaluate flags. This step is **mandatory** after creating a flag.
 
-4. **Declare the flag in code**: Add it to `flags.ts` (or create the file if it doesn't exist) using `vercelAdapter()`:
+4. **Declare the flag in code**: Add it to `flags.ts` (or create the file if it doesn't exist) using `vercelAdapter`:
    ```ts
    import { flag } from 'flags/next';
    import { vercelAdapter } from '@flags-sdk/vercel';
 
    export const myFlag = flag({
      key: 'my-flag',
-     adapter: vercelAdapter(),
+     adapter: vercelAdapter,
    });
    ```
 
@@ -129,7 +130,7 @@ For the full Vercel provider reference — user targeting, `vercel flags` CLI su
 
 ## Declaring flags
 
-When using Vercel Flags, declare flags with `vercelAdapter()` as shown in the [Agent workflow](#agent-workflow-creating-a-new-flag). For other providers, see [references/providers.md](references/providers.md). Below are the general `flag()` patterns.
+When using Vercel Flags, declare flags with `vercelAdapter` as shown in the [Agent workflow](#agent-workflow-creating-a-new-flag). For other providers, see [references/providers.md](references/providers.md). Below are the general `flag()` patterns.
 
 ### Basic flag
 
@@ -221,13 +222,48 @@ const identify = dedupe(({ cookies }) => {
 
 Note: `dedupe` is not available in Pages Router.
 
+## Bulk evaluation
+
+To evaluate **multiple** flags at once, call `evaluate()` (from `flags/next`) instead of awaiting flags one at a time or using `Promise.all()`. To evaluate a **single** flag, just call it: `await myFlag()`.
+
+```ts
+import { evaluate } from 'flags/next';
+import { flagA, flagB } from '../flags';
+
+// avoid: each await blocks the next, so the flags resolve sequentially
+const a = await flagA();
+const b = await flagB();
+
+// avoid: parallel, but each flag is evaluated in isolation
+const [a, b] = await Promise.all([flagA(), flagB()]);
+
+// prefer: shares work across the batch
+const [a, b] = await evaluate([flagA, flagB]);
+```
+
+`evaluate()` is faster than both approaches. Awaiting flags one at a time makes total latency the sum of every flag's evaluation instead of the slowest single flag, while `Promise.all()` runs them in parallel but evaluates each in isolation. `evaluate()` pre-reads headers, cookies, and overrides once for the whole batch and lets adapters resolve a group in a single call, which reduces the number of parallel promises the runtime manages and leaves less room for the async work to be interrupted by other microtasks.
+
+It accepts either an **array** (positional results) or an **object** (keyed results):
+
+```ts
+const [a, b] = await evaluate([flagA, flagB]);
+const { a, b } = await evaluate({ a: flagA, b: flagB });
+```
+
+Outside App Router (Pages Router `getServerSideProps`/API routes, or routing middleware), pass the request as the second argument: `await evaluate([flagA, flagB], request)`.
+
+`evaluate()` always evaluates flags at request time. It is not for reading [precomputed](#precompute-pattern) (static) values — for those, use `getPrecomputed` (or call the flag with the code, `await myFlag(code, flagGroup)`).
+
+Adapters can opt into batching by implementing the optional `bulkDecide` hook. The Vercel adapter (`@flags-sdk/vercel`) implements it — roughly a 10x reduction in evaluation time when resolving hundreds of flags. See [references/providers.md — Custom Adapters](references/providers.md#custom-adapters) for implementing `bulkDecide`, and [references/api.md — `evaluate`](references/api.md#evaluate) for the full signature.
+
 ## Flags Explorer setup
 
 ### Next.js (App Router)
 
 ```ts
 // app/.well-known/vercel/flags/route.ts
-import { getProviderData, createFlagsDiscoveryEndpoint } from 'flags/next';
+import { createFlagsDiscoveryEndpoint } from 'flags/next';
+import { getProviderData } from '@flags-sdk/vercel';
 import * as flags from '../../../../flags';
 
 export const GET = createFlagsDiscoveryEndpoint(async () => {
@@ -258,7 +294,15 @@ Required for precompute and Flags Explorer. Must be 32 random bytes, base64-enco
 node -e "console.log(crypto.randomBytes(32).toString('base64url'))"
 ```
 
-Store as `FLAGS_SECRET` env var. On Vercel: `vc env add FLAGS_SECRET` then `vc env pull`.
+Use a separate `FLAGS_SECRET` value for each environment (Development, Preview, Production), and mark the Preview and Production values as Sensitive. Run the generator once per environment to produce distinct values, then store each on Vercel:
+
+```sh
+vercel env add FLAGS_SECRET production --sensitive --value <production-secret>
+vercel env add FLAGS_SECRET preview --sensitive --value <preview-secret>
+vercel env add FLAGS_SECRET development --value <development-secret>
+```
+
+Then run `vc env pull` to sync to local.
 
 ## Precompute pattern
 

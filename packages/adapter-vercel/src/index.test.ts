@@ -1,5 +1,5 @@
 import { flagsClient, resetDefaultFlagsClient } from '@vercel/flags-core';
-import type { Origin, ProviderData } from 'flags';
+import type { Adapter, Origin, ProviderData } from 'flags';
 import { flag } from 'flags/next';
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
@@ -10,6 +10,7 @@ import {
   beforeEach,
   describe,
   expect,
+  expectTypeOf,
   it,
   vi,
 } from 'vitest';
@@ -68,7 +69,7 @@ describe('createVercelAdapter', () => {
     originalFlagsSecret = process.env.FLAGS_SECRET;
     originalFlags = process.env.FLAGS;
     process.env.FLAGS_SECRET = 'a'.repeat(32);
-    process.env.FLAGS = 'vf_test_sdk_key';
+    process.env.FLAGS = 'vf_server_test_sdk_key';
   });
 
   afterAll(() => {
@@ -88,19 +89,99 @@ describe('createVercelAdapter', () => {
     expect(amended).toHaveProperty('decide');
     expect(amended).toHaveProperty('origin', {
       provider: 'vercel',
-      sdkKey: 'vf_test_sdk_key',
+      sdkKey: 'vf_server_test_sdk_key',
     } satisfies Origin);
   });
 
   it('returns origin when created with sdkKey string', () => {
-    const adapter = createVercelAdapter('vf_my_sdk_key');
+    const adapter = createVercelAdapter('vf_client_my_sdk_key');
 
     const amended = adapter();
     expect(amended).toHaveProperty('decide');
     expect(amended).toHaveProperty('origin', {
       provider: 'vercel',
-      sdkKey: 'vf_my_sdk_key',
+      sdkKey: 'vf_client_my_sdk_key',
     } satisfies Origin);
+  });
+
+  it('has correct types', () => {
+    const adapter = createVercelAdapter(flagsClient);
+    type SampleValue = boolean;
+    type SampleEvaluationContext = { user: { id: string } };
+    const instance = adapter<SampleValue, SampleEvaluationContext>();
+    expectTypeOf(instance).toEqualTypeOf<
+      Adapter<SampleValue, SampleEvaluationContext>
+    >();
+    expectTypeOf(instance.decide)
+      .parameter(0)
+      .toHaveProperty('entities')
+      .toEqualTypeOf<SampleEvaluationContext | undefined>();
+  });
+
+  describe('adapterId', () => {
+    it('shares one adapterId across all adapters from the same factory call', () => {
+      const adapter = createVercelAdapter(flagsClient);
+      const a = adapter();
+      const b = adapter();
+      expect(a).toBe(b);
+      expect(a.adapterId).toBeDefined();
+      expect(a.adapterId).toBe(b.adapterId);
+    });
+
+    it('uses different adapterIds across separate factory calls', () => {
+      const adapterA = createVercelAdapter('vf_client_key_a');
+      const adapterB = createVercelAdapter('vf_client_key_b');
+      expect(adapterA().adapterId).not.toBe(adapterB().adapterId);
+    });
+  });
+
+  describe('bulkDecide', () => {
+    it('forwards to flagsClient.bulkEvaluate with mapped flags and entities', async () => {
+      const bulkEvaluateMock = vi
+        .fn()
+        .mockResolvedValue({ a: { value: 'x' }, b: { value: 'y' } });
+      const fakeClient = {
+        origin: { provider: 'vercel', sdkKey: 'vf_x' },
+        bulkEvaluate: bulkEvaluateMock,
+      } as unknown as typeof flagsClient;
+
+      const adapter = createVercelAdapter(fakeClient)();
+      const result = await adapter.bulkDecide!({
+        flags: [{ key: 'a', defaultValue: 'da' }, { key: 'b' }],
+        entities: { user: { id: 'u1' } } as any,
+        headers: undefined as any,
+        cookies: undefined as any,
+      });
+
+      expect(bulkEvaluateMock).toHaveBeenCalledTimes(1);
+      expect(bulkEvaluateMock).toHaveBeenCalledWith(
+        [
+          { key: 'a', defaultValue: 'da' },
+          { key: 'b', defaultValue: undefined },
+        ],
+        { user: { id: 'u1' } },
+      );
+      expect(result).toEqual({ a: 'x', b: 'y' });
+    });
+
+    it('omits keys whose EvaluationResult.value is undefined', async () => {
+      const fakeClient = {
+        origin: { provider: 'vercel', sdkKey: 'vf_x' },
+        bulkEvaluate: vi.fn().mockResolvedValue({
+          a: { value: 'ok' },
+          b: { value: undefined, reason: 'error', errorMessage: 'nope' },
+        }),
+      } as unknown as typeof flagsClient;
+
+      const adapter = createVercelAdapter(fakeClient)();
+      const result = await adapter.bulkDecide!({
+        flags: [{ key: 'a' }, { key: 'b' }],
+        headers: undefined as any,
+        cookies: undefined as any,
+      });
+      expect(result).toEqual({ a: 'ok' });
+      expect('b' in result).toBe(false);
+    });
   });
 });
 
@@ -109,7 +190,7 @@ describe('when used with getProviderData', () => {
 
   beforeAll(() => {
     originalFlags = process.env.FLAGS;
-    process.env.FLAGS = 'vf_test_sdk_key';
+    process.env.FLAGS = 'vf_server_test_sdk_key';
   });
 
   afterAll(() => {
@@ -166,7 +247,7 @@ describe('vercelAdapter', () => {
     originalFlagsSecret = process.env.FLAGS_SECRET;
     originalFlags = process.env.FLAGS;
     process.env.FLAGS_SECRET = 'a'.repeat(32);
-    process.env.FLAGS = 'vf_test_sdk_key';
+    process.env.FLAGS = 'vf_server_test_sdk_key';
 
     resetDefaultFlagsClient();
     resetDefaultVercelAdapter();
@@ -214,16 +295,16 @@ describe('vercelAdapter', () => {
       const testFlag = flag({ key: 'test-flag', adapter: vercelAdapter() });
       expect(testFlag.origin).toEqual({
         provider: 'vercel',
-        sdkKey: 'vf_test_sdk_key',
+        sdkKey: 'vf_server_test_sdk_key',
       } satisfies Origin);
     });
 
     it('sets vercel origin when using adapter created with sdkKey', () => {
-      const adapter = createVercelAdapter('vf_my_sdk_key');
+      const adapter = createVercelAdapter('vf_client_my_sdk_key');
       const testFlag = flag({ key: 'test-flag', adapter: adapter() });
       expect(testFlag.origin).toEqual({
         provider: 'vercel',
-        sdkKey: 'vf_my_sdk_key',
+        sdkKey: 'vf_client_my_sdk_key',
       } satisfies Origin);
     });
   });

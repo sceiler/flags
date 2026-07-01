@@ -5,6 +5,10 @@ description: Using the Flags SDK in SvelteKit
 
 [SvelteKit](https://svelte.dev/docs/kit/introduction) is a framework for building web applications with [Svelte](https://svelte.dev/). The Flags SDK supports SvelteKit out of the box.
 
+<CopyPrompt text="Add Flags SDK to my existing SvelteKit app. Configure `FLAGS_SECRET`, install and wire the Vercel Toolbar for local development, create a typed flag in `src/lib/flags.ts` using `flags/sveltekit`, add the server hook with `createHandle`, use the flag from server and client code where appropriate, and run the relevant type checks or build when finished.">
+  Add Flags SDK to my existing SvelteKit app. Configure `FLAGS_SECRET`, install and wire the Vercel Toolbar for local development, create a typed flag in `src/lib/flags.ts` using `flags/sveltekit`, add the server hook with `createHandle`, use the flag from server and client code where appropriate, and run the relevant type checks or build when finished.
+</CopyPrompt>
+
 A minimal feature flag declaration for SvelteKit looks like this:
 
 ```ts title="src/lib/flags.ts"
@@ -42,13 +46,17 @@ npm i -g vercel@latest
    ```sh title="Terminal"
    vc link
    ```
-3. Add `FLAGS_SECRET` environment variable. Run this command to create a secret:
+3. Add the `FLAGS_SECRET` environment variable. Use a separate value for each environment (Development, Preview, and Production), and mark the Preview and Production values as Sensitive.
+
+   Run this command once per environment to generate distinct secrets:
    ```sh title="Terminal"
    node -e "console.log(crypto.randomBytes(32).toString('base64url'))"
    ```
-   Then store the secret as the `FLAGS_SECRET` environment variable, and select all environments when prompted.
+   Then store each secret as the `FLAGS_SECRET` environment variable for the matching environment:
    ```sh title="Terminal"
-   vc env add FLAGS_SECRET
+   vercel env add FLAGS_SECRET production --sensitive --value <production-secret>
+   vercel env add FLAGS_SECRET preview --sensitive --value <preview-secret>
+   vercel env add FLAGS_SECRET development --value <development-secret>
    ```
 4. Finally, pull any env vars from your project on Vercel locally
    ```sh title="Terminal"
@@ -99,8 +107,7 @@ npm i -g vercel@latest
    npm run dev
    ```
 
-   You will see an error about `SvelteKitError: Not found: /.well-known/vercel/flags`. This happens because we already created the `FLAGS_SECRET` but we did not set up the flags package yet.
-   So let’s do this next.
+   You will see an error about `SvelteKitError: Not found: /.well-known/vercel/flags`. This happens because we already created the `FLAGS_SECRET` but we did not set up the flags package yet. Set it up next.
 
 ## Set up `flags`
 
@@ -133,7 +140,7 @@ npm i -g vercel@latest
    });
    ```
 
-3. Next set up the server hook. This is a one-time setup step which makes the toolbar aware of your application’s feature flags:
+3. Next set up the server hook. This is a one-time setup step which makes the toolbar aware of your application's feature flags:
 
    ```ts title="src/hooks.server.ts"
    import { createHandle } from 'flags/sveltekit';
@@ -180,12 +187,14 @@ npm i -g vercel@latest
 Open the Flags Explorer locally to see the feature flag.
 
 <ThemeAwareImage
-  srcDark="https://assets.vercel.com/image/upload/v1740065313/flags-sdk-dev/gbkv6rkqirktcgcc8cve.jpg"
-  srcLight="https://assets.vercel.com/image/upload/v1740065313/flags-sdk-dev/pqlb2ony8jwm6iedf9ds.jpg"
+  src={{
+    light:
+      "https://assets.vercel.com/image/upload/v1740065313/flags-sdk-dev/pqlb2ony8jwm6iedf9ds.jpg",
+    dark: "https://assets.vercel.com/image/upload/v1740065313/flags-sdk-dev/gbkv6rkqirktcgcc8cve.jpg",
+  }}
   alt="View the flag from the toolbar."
   priority
   className="border-300 rounded-lg border"
-  data-theme="dark"
   width={1042 / 2}
   height={1197 / 2}
 />
@@ -232,7 +241,7 @@ Evaluation Contexts allow targeting flags to specific users. The Flags SDK for S
   Learn how to identify users with the evaluation context
 </LearnMore>
 
-### API Reference
+### API reference
 
 <LearnMore href="/api-reference/frameworks/sveltekit" icon="arrow">
   APIs for working with feature flags in SvelteKit

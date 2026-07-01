@@ -1,39 +1,38 @@
 import "../global.css";
-import { VercelToolbar } from '@vercel/toolbar/next';
-import { Footer } from "@/components/geistdocs/footer";
-import { Navbar } from "@/components/geistdocs/navbar";
+import { Footer } from "@vercel/geistdocs/footer";
+import { Navbar } from "@vercel/geistdocs/navbar";
+import { VercelToolbar } from "@vercel/toolbar/next";
 import { GeistdocsProvider } from "@/components/geistdocs/provider";
-import { basePath } from "@/geistdocs";
+import { config } from "@/lib/geistdocs/config";
 import { mono, sans } from "@/lib/geistdocs/fonts";
 import { cn } from "@/lib/utils";
-import { translations } from "@/geistdocs";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-   metadataBase: new URL("https://flags-sdk.dev"),
-}
+  metadataBase: new URL("https://flags-sdk.dev"),
+};
 
 export const generateStaticParams = async () => {
-  const langs = Object.keys(translations);
+  const langs = Object.keys(config.translations ?? {});
   return langs.map((lang) => ({ lang }));
 };
 
 const Layout = async ({ children, params }: LayoutProps<"/[lang]">) => {
   const { lang } = await params;
-  const shouldInjectToolbar = process.env.NODE_ENV === 'development';
+  const shouldInjectToolbar = process.env.NODE_ENV === "development";
 
   return (
     <html
-      className={cn(sans.variable, mono.variable, "scroll-smooth antialiased")}
+      className={cn(sans.variable, mono.variable, "antialiased")}
       lang={lang}
       suppressHydrationWarning
     >
       <body>
-        <GeistdocsProvider basePath={basePath} lang={lang}>
-          <Navbar />
+        <GeistdocsProvider basePath={config.basePath} lang={lang}>
+          <Navbar config={config} />
           {children}
           {shouldInjectToolbar && <VercelToolbar />}
-          <Footer />
+          <Footer config={config} />
         </GeistdocsProvider>
       </body>
     </html>

@@ -96,6 +96,12 @@ export class Controller implements ControllerInterface {
   // Data state — tagged with origin
   private data: TaggedData | undefined;
 
+  // Memoized data spread for read() / getDatafile().
+  // Rebuilt only when `this.data` reference changes (e.g. on stream/poll update).
+  // Holds the result of stripping `_origin`; metrics are appended per-call.
+  private dataViewSource: TaggedData | undefined = undefined;
+  private dataViewBase: DatafileInput | undefined = undefined;
+
   // Sources (I/O delegates)
   private streamSource: StreamSource;
   private pollingSource: PollingSource;
@@ -113,16 +119,6 @@ export class Controller implements ControllerInterface {
   private unauthorized = false;
 
   constructor(options: ControllerOptions) {
-    if (
-      !options.sdkKey ||
-      typeof options.sdkKey !== 'string' ||
-      !options.sdkKey.startsWith('vf_')
-    ) {
-      throw new Error(
-        '@vercel/flags-core: SDK key must be a string starting with "vf_"',
-      );
-    }
-
     this.options = normalizeOptions(options);
 
     // Create source modules
@@ -134,7 +130,7 @@ export class Controller implements ControllerInterface {
     this.pollingSource = new PollingSource(this.options);
 
     this.bundledSource = new BundledSource({
-      sdkKey: this.options.sdkKey,
+      auth: this.options.auth,
       readBundledDefinitions,
     });
 
@@ -316,12 +312,17 @@ export class Controller implements ControllerInterface {
     const [result, cacheStatus] = await this.resolveData();
 
     const readMs = Date.now() - startTime;
-    const { _origin, ...data } = result;
-    const source = originToMetricsSource(_origin);
+    const source = originToMetricsSource(result._origin);
     this.trackRead(startTime, cacheHadDefinitions, isFirstRead, source);
 
+    if (this.dataViewSource !== result) {
+      const { _origin, ...rest } = result;
+      this.dataViewBase = rest;
+      this.dataViewSource = result;
+    }
+
     return {
-      ...data,
+      ...(this.dataViewBase as DatafileInput),
       metrics: {
         readMs,
         source,
@@ -377,7 +378,7 @@ export class Controller implements ControllerInterface {
         try {
           const fetched = await fetchDatafile({
             host: this.options.host,
-            sdkKey: this.options.sdkKey,
+            auth: this.options.auth,
             fetch: this.options.fetch,
           });
           this.data = tagData(fetched, 'fetched');
@@ -394,8 +395,14 @@ export class Controller implements ControllerInterface {
 
     const source = originToMetricsSource(result._origin);
 
+    if (this.dataViewSource !== result) {
+      const { _origin, ...rest } = result;
+      this.dataViewBase = rest;
+      this.dataViewSource = result;
+    }
+
     return {
-      ...result,
+      ...(this.dataViewBase as DatafileInput),
       metrics: {
         readMs: Date.now() - startTime,
         source,
@@ -479,7 +486,7 @@ export class Controller implements ControllerInterface {
 
       if (result === 'timeout') {
         console.warn(
-          '@vercel/flags-core: Stream initialization timeout, falling back',
+          '@vercel/flags-core: Stream initialization timeout, falling back while continuing to connect in the background',
         );
         // Don't stop stream - let it continue trying in background.
         // Swallow the rejection from the background stream promise to
@@ -539,7 +546,7 @@ export class Controller implements ControllerInterface {
 
       if (result === 'timeout') {
         console.warn(
-          '@vercel/flags-core: Polling initialization timeout, falling back',
+          '@vercel/flags-core: Polling initialization timeout, falling back while continuing to poll in the background',
         );
         return false;
       }
@@ -607,7 +614,7 @@ export class Controller implements ControllerInterface {
     try {
       const fetched = await fetchDatafile({
         host: this.options.host,
-        sdkKey: this.options.sdkKey,
+        auth: this.options.auth,
         fetch: this.options.fetch,
       });
       return tagData(fetched, 'fetched');
@@ -648,7 +655,7 @@ export class Controller implements ControllerInterface {
       try {
         const fetched = await fetchDatafile({
           host: this.options.host,
-          sdkKey: this.options.sdkKey,
+          auth: this.options.auth,
           fetch: this.options.fetch,
         });
         this.data = tagData(fetched, 'fetched');
@@ -713,7 +720,7 @@ export class Controller implements ControllerInterface {
       try {
         const fetched = await fetchDatafile({
           host: this.options.host,
-          sdkKey: this.options.sdkKey,
+          auth: this.options.auth,
           fetch: this.options.fetch,
         });
         this.data = tagData(fetched, 'fetched');

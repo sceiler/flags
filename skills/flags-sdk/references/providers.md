@@ -33,7 +33,7 @@ pnpm i flags @flags-sdk/vercel
 Before running any `vercel flags` command, verify the project is linked to Vercel. Check for a `.vercel` directory in the project root. If it doesn't exist, run `vercel link` first.
 
 1. Create a flag in the Vercel dashboard or via CLI: `vercel flags add <flag-key> --kind boolean --description "<description>"`
-2. Pull env vars: you **must** run `vercel env pull` to write `FLAGS` and `FLAGS_SECRET` to `.env.local`. Without these environment variables, `vercelAdapter()` will not be able to evaluate flags.
+2. Pull env vars: you **must** run `vercel env pull` to write `FLAGS` and `FLAGS_SECRET` to `.env.local`. Without these environment variables, `vercelAdapter` will not be able to evaluate flags.
 3. Declare the flag:
 
 ```ts
@@ -42,7 +42,7 @@ import { vercelAdapter } from '@flags-sdk/vercel';
 
 export const exampleFlag = flag({
   key: 'example-flag',
-  adapter: vercelAdapter(),
+  adapter: vercelAdapter,
 });
 ```
 
@@ -65,7 +65,7 @@ const identify = dedupe(async (): Promise<Entities> => ({
 export const exampleFlag = flag<boolean, Entities>({
   key: 'example-flag',
   identify,
-  adapter: vercelAdapter(),
+  adapter: vercelAdapter,
 });
 ```
 
@@ -90,7 +90,7 @@ const customAdapter = createVercelAdapter(process.env.CUSTOM_FLAGS_KEY!);
 
 export const exampleFlag = flag({
   key: 'example-flag',
-  adapter: customAdapter(),
+  adapter: customAdapter,
 });
 ```
 
@@ -107,7 +107,7 @@ const vercelAdapter = createVercelAdapter(vercelFlagsClient);
 
 export const exampleFlag = flag({
   key: 'example-flag',
-  adapter: vercelAdapter(),
+  adapter: vercelAdapter,
 });
 ```
 
@@ -209,7 +209,7 @@ import { flag } from 'flags/next';
 import { edgeConfigAdapter } from '@flags-sdk/edge-config';
 
 export const exampleFlag = flag({
-  adapter: edgeConfigAdapter(),
+  adapter: edgeConfigAdapter,
   key: 'example-flag',
 });
 ```
@@ -666,6 +666,36 @@ export function createMyAdapter(/* options */) {
 }
 ```
 
+### Bulk evaluation (`bulkDecide`)
+
+Adapters can implement an optional `bulkDecide` hook. When set (and the adapter has an `adapterId`), `evaluate()` calls it once for every group of flags that share this adapter and the same `identify` source — instead of calling `decide` per flag. This lets the provider share work across evaluations (e.g. a single network request for many flags).
+
+```ts
+return {
+  adapterId: 'my-provider', // required for bulkDecide to be used
+  origin(key) {
+    return `https://my-provider.com/flags/${key}`;
+  },
+  async decide({ key }): Promise<ValueType> {
+    return false as ValueType;
+  },
+  // Called by evaluate() for a batch of flags sharing this adapter + identify
+  async bulkDecide({ flags, entities, headers, cookies }) {
+    // flags: { key: string; defaultValue?: unknown }[]
+    // Return a record keyed by flag key.
+    return Object.fromEntries(
+      flags.map(({ key }) => [key, false as ValueType]),
+    );
+  },
+};
+```
+
+Contract:
+
+- Return `Record<flagKey, value>`. Missing keys or `value: undefined` fall back to each flag's `defaultValue`.
+- Throwing falls back to `defaultValue` per flag (and rejects for flags without a `defaultValue`).
+- A flag with an inline `decide` takes precedence and is excluded from bulk evaluation.
+
 ### Default adapter pattern
 
 Expose a lazily-initialized default for simpler usage:
@@ -689,6 +719,6 @@ import { myAdapter } from './my-adapter';
 
 export const exampleFlag = flag({
   key: 'example',
-  adapter: myAdapter(),
+  adapter: myAdapter,
 });
 ```

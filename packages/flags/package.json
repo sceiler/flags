@@ -1,6 +1,6 @@
 {
   "name": "flags",
-  "version": "4.0.5",
+  "version": "4.2.0",
   "description": "Flags SDK by Vercel - The feature flags toolkit for Next.js and SvelteKit",
   "keywords": [
     "feature flags",
@@ -10,6 +10,7 @@
     "overrides",
     "SvelteKit"
   ],
+  "author": "Dominik Ferber <dominik@vercel.com>",
   "homepage": "https://flags-sdk.dev",
   "bugs": {
     "url": "https://github.com/vercel/flags/issues"
@@ -88,6 +89,7 @@
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "4.2.1",
     "msw": "2.6.4",
+    "next": "16.2.6",
     "tsup": "8.5.1",
     "typescript": "5.6.3",
     "vite": "5.4.21",

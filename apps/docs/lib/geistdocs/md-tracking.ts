@@ -1,15 +1,7 @@
+import type { TrackMarkdownRequestEvent } from "@vercel/geistdocs/proxy";
 import { siteId } from "@/geistdocs";
 
 const PLATFORM_URL = "https://geistdocs.com/md-tracking";
-
-type TrackMdRequestParams = {
-  path: string;
-  userAgent: string | null;
-  referer: string | null;
-  acceptHeader: string | null;
-  /** How the markdown was requested: 'md-url' for direct .md URLs, 'header-negotiated' for Accept header */
-  requestType?: "md-url" | "header-negotiated";
-};
 
 /**
  * Track a markdown page request via the geistdocs platform.
@@ -21,7 +13,8 @@ export async function trackMdRequest({
   referer,
   acceptHeader,
   requestType,
-}: TrackMdRequestParams): Promise<void> {
+  detectionMethod,
+}: TrackMarkdownRequestEvent): Promise<void> {
   try {
     const response = await fetch(PLATFORM_URL, {
       method: "POST",
@@ -35,6 +28,7 @@ export async function trackMdRequest({
         referer,
         acceptHeader,
         requestType,
+        detectionMethod,
       }),
     });
 

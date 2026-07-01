@@ -35,6 +35,13 @@ export class UnauthorizedError extends Error {
   }
 }
 
+class TokenResolutionError extends Error {
+  constructor(error: unknown) {
+    super('stream: token resolution failed', { cause: error });
+    this.name = 'TokenResolutionError';
+  }
+}
+
 export type StreamCallbacks = {
   onDatafile: (data: BundledDefinitions) => void;
   onPrimed?: (message: PrimedMessage) => void;
@@ -43,11 +50,11 @@ export type StreamCallbacks = {
 
 export type StreamConfig = {
   host: string;
-  sdkKey: string;
   abortController: AbortController;
   fetch?: typeof globalThis.fetch;
   /** Returns the current revision number to send as X-Revision header */
   revision?: () => number | undefined;
+  resolveToken: () => Promise<string>;
 };
 
 /**
@@ -59,12 +66,7 @@ export async function connectStream(
   config: StreamConfig,
   callbacks: StreamCallbacks,
 ): Promise<void> {
-  const {
-    host,
-    sdkKey,
-    abortController,
-    fetch: fetchFn = globalThis.fetch,
-  } = config;
+  const { host, abortController, fetch: fetchFn = globalThis.fetch } = config;
   const { onDatafile, onPrimed, onDisconnect } = callbacks;
   let retryCount = 0;
   let lastAttemptTime = 0;
@@ -78,10 +80,14 @@ export async function connectStream(
 
   void (async () => {
     let initialDataReceived = false;
+    let lastError: unknown;
 
     while (!abortController.signal.aborted) {
       if (retryCount > MAX_RETRY_COUNT) {
-        console.error('@vercel/flags-core: Max retry count exceeded');
+        console.error(
+          '@vercel/flags-core: Max retry count exceeded',
+          lastError ?? 'stream closed repeatedly without an error',
+        );
         if (!initialDataReceived) {
           rejectInit!(
             new Error('stream: max retry count exceeded before receiving data'),
@@ -114,8 +120,11 @@ export async function connectStream(
 
       try {
         lastAttemptTime = Date.now();
+        const token = await config.resolveToken().catch((error) => {
+          throw new TokenResolutionError(error);
+        });
         const headers: Record<string, string> = {
-          Authorization: `Bearer ${sdkKey}`,
+          Authorization: `Bearer ${token}`,
           'User-Agent': `VercelFlagsCore/${version}`,
           'X-Retry-Attempt': String(retryCount),
         };
@@ -241,10 +250,16 @@ export async function connectStream(
         if (abortController.signal.aborted) {
           break;
         }
+        if (error instanceof TokenResolutionError && !initialDataReceived) {
+          rejectInit!(error.cause);
+          abortController.abort();
+          break;
+        }
         // Ping timeout aborts only the per-connection controller; this is
-        // an expected reconnect, not a real error — skip the noisy log.
+        // an expected reconnect, not a real error. Stay silent on retryable
+        // failures too — the error is only logged once retries are exhausted.
         if (!connectionAbort.signal.aborted) {
-          console.error('@vercel/flags-core: Stream error', error);
+          lastError = error;
         }
         onDisconnect?.();
         retryCount++;

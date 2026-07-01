@@ -1,13 +1,14 @@
+import { Button } from '@vercel/geistdocs/components/button';
 import { generatePermutations } from 'flags/next';
 import { FlagValues } from 'flags/react';
 import { ArrowRight } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { Button } from '@/components/ui/button';
 import {
   enableBannerFlag,
   enableDitheredHeroFlag,
   enableHeroTextFlag,
+  installAudienceFlag,
   rootFlags,
 } from '@/flags';
 import HeroImage from './components/hero-image';
@@ -15,6 +16,7 @@ import { Adaptable, Effortless, Flexible } from './components/illustrations';
 import Testimonials from './components/testimonials';
 import { CopySnippet } from './copy-snippet';
 import { HighlightedCode } from './highlighted-code';
+import { InstallCommand } from './install-command';
 import { FlagSelect, FlagToggle } from './toggles';
 
 const FEATURES = [
@@ -71,11 +73,13 @@ export default async function HomePage({
   params: Promise<{ code: string }>;
 }) {
   const { code } = await params;
-  const [bannerFlag, ditheredHeroFlag, heroTextFlag] = await Promise.all([
-    enableBannerFlag(code, rootFlags),
-    enableDitheredHeroFlag(code, rootFlags),
-    enableHeroTextFlag(code, rootFlags),
-  ]);
+  const [bannerFlag, ditheredHeroFlag, heroTextFlag, installAudience] =
+    await Promise.all([
+      enableBannerFlag(code, rootFlags),
+      enableDitheredHeroFlag(code, rootFlags),
+      enableHeroTextFlag(code, rootFlags),
+      installAudienceFlag(code, rootFlags),
+    ]);
 
   return (
     <div className="container mx-auto max-w-5xl">
@@ -84,6 +88,7 @@ export default async function HomePage({
           [enableBannerFlag.key]: bannerFlag,
           [enableDitheredHeroFlag.key]: ditheredHeroFlag,
           [enableHeroTextFlag.key]: heroTextFlag,
+          [installAudienceFlag.key]: installAudience,
         }}
       />
 
@@ -93,26 +98,24 @@ export default async function HomePage({
           <h1 className="text-balance font-semibold text-[40px] leading-[1.1] tracking-tight sm:text-5xl xl:text-6xl">
             {heroTextFlag}
           </h1>
-          <p className="mt-5 max-w-3xl text-balance text-muted-foreground leading-relaxed sm:text-xl">
+          <p className="mt-5 max-w-3xl text-balance text-gray-800 leading-relaxed sm:text-xl">
             Flags SDK is a free, open-source library for using feature flags in
             Next.js and SvelteKit.
           </p>
-          <div className="mt-6 inline-flex w-fit items-center gap-3">
-            <Button size="lg" asChild>
-              <Link href="/frameworks/next">Get Started</Link>
-            </Button>
-            <CopySnippet text="npm i flags" />
-          </div>
+          <InstallCommand
+            flagKey={installAudienceFlag.key}
+            value={installAudience}
+          />
         </div>
         <div className="relative p-4 sm:p-6">
           {ditheredHeroFlag ? <HeroImage /> : null}
 
-          <div className="relative rounded-xl border bg-background p-4 shadow-md md:p-6">
+          <div className="relative rounded-xl bg-background-100 p-4 md:p-6 shadow-(--ds-shadow-menu)">
             <div className="flex flex-col gap-y-1 px-2">
               <div className="mb-0.5 font-semibold text-lg tracking-tight">
                 Try the Flags SDK
               </div>
-              <span className="text-muted-foreground text-sm">
+              <span className="text-gray-800 text-sm">
                 Set persistent flags for this page
               </span>
             </div>
@@ -150,7 +153,7 @@ export default async function HomePage({
             <h2 className="font-semibold text-xl tracking-tight sm:text-2xl md:text-3xl lg:text-[40px]">
               Using flags as code
             </h2>
-            <p className="text-lg text-muted-foreground">
+            <p className="text-lg text-gray-800">
               The SDK sits between your application and the source of your
               flags, helping you follow best practices and keep your website
               fast.
@@ -165,7 +168,7 @@ export default async function HomePage({
                 <h3 className="mt-3 font-semibold text-lg tracking-tight md:mt-6">
                   {feature.title}
                 </h3>
-                <p className="mt-1.5 text-muted-foreground md:mt-4">
+                <p className="mt-1.5 text-gray-800 md:mt-4">
                   {feature.description}
                 </p>
               </div>
@@ -180,7 +183,7 @@ export default async function HomePage({
               <h2 className="font-semibold text-xl tracking-tight sm:text-2xl md:text-3xl">
                 Effortless setup
               </h2>
-              <p className="text-lg text-muted-foreground">
+              <p className="text-lg text-gray-800">
                 With a simple declarative API to define and use your feature
                 flags.
               </p>

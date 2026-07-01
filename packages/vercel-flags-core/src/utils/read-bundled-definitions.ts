@@ -4,6 +4,7 @@
 // is degraded or unavailable.
 //
 
+import type { Auth, BundledDefinitionsLookup } from '../controller/auth';
 import type { BundledDefinitions, BundledDefinitionsResult } from '../types';
 
 /** In-memory cache of SDK key to its hashed value, so we don't re-hash repeatedly. */
@@ -35,16 +36,15 @@ function hashSdkKey(sdkKey: string): Promise<string> {
  * Reads the local definitions that get bundled at build time.
  */
 export async function readBundledDefinitions(
-  sdkKey: string,
+  auth: Auth,
 ): Promise<BundledDefinitionsResult> {
   let get: (sdkKey: string) => BundledDefinitions | null;
   try {
     const module = await import(
       /* turbopackOptional: true */
-      // @ts-expect-error this only exists at build time
       '@vercel/flags-definitions'
     );
-    get = module.get;
+    get = module.get as (sdkKey: string) => BundledDefinitions | null;
   } catch (error) {
     // If the module doesn't exist, the prepare script didn't run
     if (
@@ -63,13 +63,27 @@ export async function readBundledDefinitions(
     return { definitions: null, state: 'missing-file' };
   }
 
-  // try plain sdk key first
-  const entry = get(sdkKey);
+  let lookup: BundledDefinitionsLookup;
+  try {
+    lookup = await auth.resolveBundledDefinitionsLookup();
+  } catch (error) {
+    return { definitions: null, state: 'unexpected-error', error };
+  }
+
+  if (lookup.type === 'project-id') {
+    const entry = get(lookup.projectId);
+    return entry
+      ? { definitions: entry, state: 'ok' }
+      : { definitions: null, state: 'missing-entry' };
+  }
+
+  // Try plain sdk key first for bundles created by older CLI versions.
+  const entry = get(lookup.sdkKey);
   if (entry) return { definitions: entry, state: 'ok' };
 
   // try hashed key but catch any errors
   try {
-    const hashedKey = await hashSdkKey(sdkKey);
+    const hashedKey = await hashSdkKey(lookup.sdkKey);
     // try original key (older cli versions) and hashed key (newer cli versions)
     const hashedEntry = get(hashedKey);
     if (hashedEntry) return { definitions: hashedEntry, state: 'ok' };

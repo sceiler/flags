@@ -12,6 +12,33 @@ type PathArray = (string | number)[];
 
 const MAX_REGEX_INPUT_LENGTH = 10_000;
 
+/** uint32 max — domain of xxHash32 output, used for split/rollout thresholds */
+const UINT32_MAX = 4_294_967_295;
+
+// Per-object memoization caches keyed by the outcome / rhs objects from the
+// datafile. Using WeakMaps (instead of mutating the objects with symbol-keyed
+// props) keeps datafile objects pristine so they serialize cleanly across the
+// RSC server/client boundary. Entries are GC'd when the datafile is dropped.
+const scaledWeightsCache = new WeakMap<Packed.SplitOutcome, number[]>();
+const compiledRegexCache = new WeakMap<object, RegExp>();
+
+function getScaledWeights(outcome: Packed.SplitOutcome): number[] {
+  const cached = scaledWeightsCache.get(outcome);
+  if (cached) return cached;
+  const total = sum(outcome.weights);
+  const scaled = outcome.weights.map((w) => (w / total) * UINT32_MAX);
+  scaledWeightsCache.set(outcome, scaled);
+  return scaled;
+}
+
+function getCompiledRegex(rhs: { pattern: string; flags: string }): RegExp {
+  const cached = compiledRegexCache.get(rhs);
+  if (cached) return cached;
+  const compiled = new RegExp(rhs.pattern, rhs.flags);
+  compiledRegexCache.set(rhs, compiled);
+  return compiled;
+}
+
 function exhaustivenessCheck(_: never): never {
   throw new Error('Exhaustiveness check failed');
 }
@@ -261,7 +288,7 @@ function matchConditions<T>(
             !Array.isArray(rhs) &&
             rhs?.type === 'regex'
           ) {
-            return new RegExp(rhs.pattern, rhs.flags).test(lhs);
+            return getCompiledRegex(rhs).test(lhs);
           }
           return false;
 
@@ -273,7 +300,7 @@ function matchConditions<T>(
             !Array.isArray(rhs) &&
             rhs?.type === 'regex'
           ) {
-            return !new RegExp(rhs.pattern, rhs.flags).test(lhs);
+            return !getCompiledRegex(rhs).test(lhs);
           }
           return false;
         case Comparator.BEFORE: {
@@ -371,25 +398,98 @@ function handleOutcome<T>(
         return { value: defaultOutcome, outcomeType: OutcomeType.SPLIT };
       }
 
-      /** 2^32-1 */
-      const maxValue = 4_294_967_295;
       /**
        * (xxHash32): turns the string into a number between 0 and 2^32-1 (max uint32 value)
        * Since we know the range of the hash function, we don't use modulo here. If we change
-       * the hash function, or if the range changes, we should add a modulo here and/or adjust maxValue.
+       * the hash function, or if the range changes, we should add a modulo here and/or adjust UINT32_MAX.
        */
       const value = hashInput(lhs, params.definition.seed);
-      const sumOfWeights = sum(outcome.weights);
-      const scaledWeights = outcome.weights.map(
-        (weight) => (weight / sumOfWeights) * maxValue,
-      );
-      const variantIndex = findWeightedIndex(scaledWeights, value, maxValue);
+      const scaledWeights = getScaledWeights(outcome);
+      const variantIndex = findWeightedIndex(scaledWeights, value, UINT32_MAX);
       return {
         value:
           variantIndex === -1
             ? defaultOutcome
             : getVariant<T>(params.definition.variants, variantIndex),
         outcomeType: OutcomeType.SPLIT,
+      };
+    }
+    case 'rollout': {
+      const lhs = access(outcome.base, params);
+      const defaultOutcome = getVariant<T>(
+        params.definition.variants,
+        outcome.defaultVariant,
+      );
+
+      // serve the default variant if the lhs is not a string
+      if (typeof lhs !== 'string') {
+        return { value: defaultOutcome, outcomeType: OutcomeType.ROLLOUT };
+      }
+
+      // Determine active slot based on elapsed time
+      const now = Date.now();
+      const elapsed = now - outcome.startTimestamp;
+
+      // Before rollout starts or no slots, serve rollFromVariant
+      if (elapsed < 0 || outcome.slots.length === 0) {
+        return {
+          value: getVariant<T>(
+            params.definition.variants,
+            outcome.rollFromVariant,
+          ),
+          outcomeType: OutcomeType.ROLLOUT,
+        };
+      }
+
+      // Walk slots to find current promille.
+      // Each slot's durationMs is how long that slot is served before
+      // moving to the next one. Once all slots are exhausted the
+      // rollout is complete (100% to rollToVariant).
+      let cumulativeDuration = 0;
+      let currentPromille = 0;
+      let exhausted = true;
+      for (const [promille, durationMs] of outcome.slots) {
+        currentPromille = promille;
+        cumulativeDuration += durationMs;
+        if (cumulativeDuration > elapsed) {
+          exhausted = false;
+          break;
+        }
+      }
+      if (exhausted) currentPromille = 100_000;
+
+      // short-circuit common edges
+      if (currentPromille <= 0) {
+        return {
+          value: getVariant<T>(
+            params.definition.variants,
+            outcome.rollFromVariant,
+          ),
+          outcomeType: OutcomeType.ROLLOUT,
+        };
+      }
+      if (currentPromille >= 100_000) {
+        return {
+          value: getVariant<T>(
+            params.definition.variants,
+            outcome.rollToVariant,
+          ),
+          outcomeType: OutcomeType.ROLLOUT,
+        };
+      }
+
+      const value = hashInput(lhs, params.definition.seed);
+      const threshold = (currentPromille / 100_000) * UINT32_MAX;
+
+      return {
+        value:
+          value < threshold
+            ? getVariant<T>(params.definition.variants, outcome.rollToVariant)
+            : getVariant<T>(
+                params.definition.variants,
+                outcome.rollFromVariant,
+              ),
+        outcomeType: OutcomeType.ROLLOUT,
       };
     }
     default: {
@@ -482,6 +582,45 @@ export function evaluate<T>(
   return Object.assign(handleOutcome<T>(params, envConfig.fallthrough), {
     reason: ResolutionReason.FALLTHROUGH as const,
   }) satisfies EvaluationResult<T>;
+}
+
+export type BulkEvaluationInput<T> = {
+  definition: Packed.FlagDefinition;
+  defaultValue?: T;
+};
+
+/**
+ * Evaluates multiple feature flags against the same entities, segments, and
+ * environment.
+ *
+ * Reuses a single shared `EvaluationParams` object across flags so callers
+ * avoid the overhead of constructing one per call (and don't need to spawn
+ * parallel promises just to fan out independent sync evaluations).
+ */
+export function bulkEvaluate<T = unknown>(
+  flags: Record<string, BulkEvaluationInput<T>>,
+  shared: {
+    entities?: Record<string, unknown>;
+    environment: string;
+    segments?: EvaluationParams<T>['segments'];
+  },
+): Record<string, EvaluationResult<T>> {
+  const params: EvaluationParams<T> = {
+    entities: shared.entities,
+    environment: shared.environment,
+    segments: shared.segments,
+    definition: undefined as unknown as Packed.FlagDefinition,
+    defaultValue: undefined,
+  };
+
+  const results: Record<string, EvaluationResult<T>> = {};
+  for (const key in flags) {
+    const flag = flags[key]!;
+    params.definition = flag.definition;
+    params.defaultValue = flag.defaultValue;
+    results[key] = evaluate<T>(params);
+  }
+  return results;
 }
 
 /**

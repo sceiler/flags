@@ -84,7 +84,7 @@ type FlagsClient = {
 
 ```typescript
 type ControllerOptions = {
-  sdkKey: string;
+  auth: Auth;
   datafile?: Datafile;  // Initial datafile for immediate reads
   stream?: boolean | { initTimeoutMs: number };      // default: true (3000ms)
   polling?: boolean | { intervalMs: number; initTimeoutMs: number };  // default: true (30s interval, 3s timeout)
@@ -209,8 +209,8 @@ Only call `initialize()` explicitly when the test specifically needs to verify i
 ### Assert console output from the implementation
 
 The implementation logs warnings/errors for specific conditions. Tests must assert these:
-- Stream timeout: `console.warn('@vercel/flags-core: Stream initialization timeout, falling back')`
-- Stream error (e.g., 502): `console.error('@vercel/flags-core: Stream error', expect.any(Error))`
+- Stream timeout: `console.warn('@vercel/flags-core: Stream initialization timeout, falling back while continuing to connect in the background')`
+- Stream error: retryable failures are silent; the error is only logged once retries are exhausted via `console.error('@vercel/flags-core: Max retry count exceeded', lastError)`
 - 401 fast-fail: `console.error` with auth error (no retry, no timeout wait)
 
 ### Do not weaken assertions when adapting tests

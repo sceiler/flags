@@ -24,7 +24,7 @@ vi.mock('./lib/report-value', () => ({
   internalReportValue: vi.fn(),
 }));
 
-const sdkKey = 'vf_fake';
+const sdkKey = 'vf_server_fake';
 const fetchMock = vi.fn<typeof fetch>();
 
 /**
@@ -80,21 +80,21 @@ function makeBundled(
 }
 
 const ingestRequestHeaders = Object.freeze({
-  Authorization: 'Bearer vf_fake',
+  Authorization: 'Bearer vf_server_fake',
   'Content-Type': 'application/json',
   'User-Agent': `VercelFlagsCore/${version}`,
   'X-Vercel-Env': 'production',
 });
 
 const streamRequestHeaders = Object.freeze({
-  Authorization: 'Bearer vf_fake',
+  Authorization: 'Bearer vf_server_fake',
   'User-Agent': `VercelFlagsCore/${version}`,
   'X-Retry-Attempt': '0',
   'X-Vercel-Env': 'production',
 });
 
 const datafileRequestHeaders = Object.freeze({
-  Authorization: 'Bearer vf_fake',
+  Authorization: 'Bearer vf_server_fake',
   'User-Agent': `VercelFlagsCore/${version}`,
   'X-Vercel-Env': 'production',
 });
@@ -168,7 +168,7 @@ describe('Controller (black-box)', () => {
 
     it('should accept valid SDK key', () => {
       expect(() =>
-        createClient('vf_valid_key', {
+        createClient('vf_server_valid_key', {
           fetch: fetchMock,
           stream: false,
           polling: false,
@@ -638,7 +638,7 @@ describe('Controller (black-box)', () => {
       expect(result.metrics?.connectionState).toBe('disconnected');
 
       expect(warnSpy).toHaveBeenCalledWith(
-        '@vercel/flags-core: Stream initialization timeout, falling back',
+        '@vercel/flags-core: Stream initialization timeout, falling back while continuing to connect in the background',
       );
       warnSpy.mockRestore();
     });
@@ -675,12 +675,13 @@ describe('Controller (black-box)', () => {
       expect(result.value).toBe(true);
       expect(result.metrics?.source).toBe('embedded');
 
-      expect(errorSpy).toHaveBeenCalledWith(
+      // Retryable stream errors are silent until retries are exhausted.
+      expect(errorSpy).not.toHaveBeenCalledWith(
         '@vercel/flags-core: Stream error',
-        expect.any(Error),
+        expect.anything(),
       );
       expect(warnSpy).toHaveBeenCalledWith(
-        '@vercel/flags-core: Stream initialization timeout, falling back',
+        '@vercel/flags-core: Stream initialization timeout, falling back while continuing to connect in the background',
       );
       errorSpy.mockRestore();
       warnSpy.mockRestore();
@@ -781,7 +782,7 @@ describe('Controller (black-box)', () => {
       expect(result.metrics?.source).toBe('embedded');
 
       expect(warnSpy).toHaveBeenCalledWith(
-        '@vercel/flags-core: Stream initialization timeout, falling back',
+        '@vercel/flags-core: Stream initialization timeout, falling back while continuing to connect in the background',
       );
       warnSpy.mockRestore();
     });
@@ -962,7 +963,7 @@ describe('Controller (black-box)', () => {
       expect(result.metrics?.source).toBe('in-memory');
 
       expect(warnSpy).toHaveBeenCalledWith(
-        '@vercel/flags-core: Stream initialization timeout, falling back',
+        '@vercel/flags-core: Stream initialization timeout, falling back while continuing to connect in the background',
       );
 
       warnSpy.mockRestore();
@@ -998,7 +999,7 @@ describe('Controller (black-box)', () => {
       expect(result.metrics?.source).toBe('in-memory');
 
       expect(warnSpy).toHaveBeenCalledWith(
-        '@vercel/flags-core: Stream initialization timeout, falling back',
+        '@vercel/flags-core: Stream initialization timeout, falling back while continuing to connect in the background',
       );
 
       warnSpy.mockRestore();
@@ -1897,11 +1898,10 @@ describe('Controller (black-box)', () => {
       expect(result.metrics?.source).toBe('embedded');
       expect(result.metrics?.connectionState).toBe('disconnected');
 
-      expect(errorSpy).toHaveBeenCalledWith(
+      // Retryable stream errors are silent until retries are exhausted.
+      expect(errorSpy).not.toHaveBeenCalledWith(
         '@vercel/flags-core: Stream error',
-        expect.objectContaining({
-          message: 'stream body was not present',
-        }),
+        expect.anything(),
       );
 
       await client.shutdown();
@@ -2788,6 +2788,25 @@ describe('Controller (black-box)', () => {
       );
     });
 
+    it('should return FLAG_NOT_FOUND with undefined value when no defaultValue is provided for missing flag', async () => {
+      const client = createClient(sdkKey, {
+        fetch: fetchMock,
+        stream: false,
+        polling: false,
+        datafile: makeBundled(),
+        buildStep: true,
+      });
+
+      const result = await client.evaluate('nonexistent-flag');
+
+      expect(result.value).toBeUndefined();
+      expect(result.reason).toBe('error');
+      expect(result.errorCode).toBe('FLAG_NOT_FOUND');
+      expect(result.errorMessage).toContain(
+        '@vercel/flags-core: Definition not found for flag "nonexistent-flag"',
+      );
+    });
+
     it('should evaluate existing paused flag', async () => {
       const client = createClient(sdkKey, {
         fetch: fetchMock,
@@ -2879,6 +2898,10 @@ describe('Controller (black-box)', () => {
             environments: { production: 0 },
             variants: [42],
           },
+          jsonFlag: {
+            environments: { production: 0 },
+            variants: [{ color: 'red', size: 12 }],
+          },
         },
       });
 
@@ -2893,6 +2916,10 @@ describe('Controller (black-box)', () => {
       expect((await client.evaluate('boolFlag')).value).toBe(true);
       expect((await client.evaluate('stringFlag')).value).toBe('hello');
       expect((await client.evaluate('numberFlag')).value).toBe(42);
+      expect((await client.evaluate('jsonFlag')).value).toEqual({
+        color: 'red',
+        size: 12,
+      });
     });
 
     it('should call internalReportValue when projectId exists', async () => {
@@ -3281,12 +3308,13 @@ describe('Controller (black-box)', () => {
       expect(h0['X-Retry-Attempt']).toBe('0');
       expect(h1['X-Retry-Attempt']).toBe('1');
 
-      expect(errorSpy).toHaveBeenCalledWith(
+      // Retryable stream errors are silent until retries are exhausted.
+      expect(errorSpy).not.toHaveBeenCalledWith(
         '@vercel/flags-core: Stream error',
-        expect.any(Error),
+        expect.anything(),
       );
       expect(warnSpy).toHaveBeenCalledWith(
-        '@vercel/flags-core: Stream initialization timeout, falling back',
+        '@vercel/flags-core: Stream initialization timeout, falling back while continuing to connect in the background',
       );
       errorSpy.mockRestore();
       warnSpy.mockRestore();

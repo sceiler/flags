@@ -4,8 +4,8 @@ import { make } from './index.make';
 
 // Mock the Controller to avoid real network calls
 vi.mock('./controller', () => ({
-  Controller: vi.fn().mockImplementation(({ sdkKey }) => ({
-    sdkKey,
+  Controller: vi.fn().mockImplementation(({ auth }) => ({
+    auth,
     read: vi.fn().mockResolvedValue({
       projectId: 'test',
       definitions: {},
@@ -20,7 +20,7 @@ vi.mock('./controller', () => ({
 import { Controller } from './controller';
 
 function createMockCreateRawClient(): ReturnType<typeof createCreateRawClient> {
-  return vi.fn().mockImplementation(({ dataSource }) => ({
+  return vi.fn().mockImplementation(({ controller }) => ({
     initialize: vi.fn().mockResolvedValue(undefined),
     shutdown: vi.fn().mockResolvedValue(undefined),
     getDatafile: vi.fn().mockResolvedValue({
@@ -38,7 +38,7 @@ function createMockCreateRawClient(): ReturnType<typeof createCreateRawClient> {
       revision: 1,
     }),
     evaluate: vi.fn().mockResolvedValue({ value: true, reason: 'static' }),
-    _dataSource: dataSource, // For testing inspection
+    _dataSource: controller, // For testing inspection
   }));
 }
 
@@ -60,10 +60,10 @@ describe('make', () => {
       const createRawClient = createMockCreateRawClient();
       const { createClient } = make(createRawClient);
 
-      const client = createClient('vf_test_key');
+      const client = createClient('vf_server_test_key');
 
       expect(Controller).toHaveBeenCalledWith({
-        sdkKey: 'vf_test_key',
+        auth: expect.objectContaining({ sdkKey: 'vf_server_test_key' }),
       });
       expect(createRawClient).toHaveBeenCalled();
       expect(client).toBeDefined();
@@ -74,11 +74,29 @@ describe('make', () => {
       const { createClient } = make(createRawClient);
 
       const connectionString =
-        'flags:edgeConfigId=ecfg_123&edgeConfigToken=token&sdkKey=vf_conn_key';
+        'flags:edgeConfigId=ecfg_123&edgeConfigToken=token&sdkKey=vf_client_conn_key';
       const client = createClient(connectionString);
 
       expect(Controller).toHaveBeenCalledWith({
-        sdkKey: 'vf_conn_key',
+        auth: expect.objectContaining({ sdkKey: 'vf_client_conn_key' }),
+      });
+      expect(client).toBeDefined();
+    });
+
+    it('should create an OIDC-authenticated client with options as the first argument', () => {
+      const createRawClient = createMockCreateRawClient();
+      const { createClient } = make(createRawClient);
+
+      const client = createClient({ stream: false, polling: false });
+
+      expect(Controller).toHaveBeenCalledWith({
+        auth: expect.objectContaining({ sdkKey: undefined }),
+        stream: false,
+        polling: false,
+      });
+      expect(createRawClient).toHaveBeenCalledWith({
+        controller: expect.any(Object),
+        origin: { provider: 'vercel', sdkKey: undefined },
       });
       expect(client).toBeDefined();
     });
@@ -114,7 +132,7 @@ describe('make', () => {
   describe('flagsClient proxy', () => {
     it('should not create client until property is accessed', () => {
       const createRawClient = createMockCreateRawClient();
-      process.env.FLAGS = 'vf_test_key';
+      process.env.FLAGS = 'vf_server_test_key';
 
       const { flagsClient } = make(createRawClient);
 
@@ -127,15 +145,16 @@ describe('make', () => {
       expect(createRawClient).toHaveBeenCalledTimes(1);
     });
 
-    it('should throw if FLAGS env var is missing when accessed', () => {
+    it('should create an OIDC-authenticated default client if FLAGS env var is missing', () => {
       const createRawClient = createMockCreateRawClient();
       delete process.env.FLAGS;
 
       const { flagsClient } = make(createRawClient);
+      const _ = flagsClient.evaluate;
 
-      expect(() => flagsClient.evaluate).toThrow(
-        'flags: Missing environment variable FLAGS',
-      );
+      expect(Controller).toHaveBeenCalledWith({
+        auth: expect.objectContaining({ sdkKey: undefined }),
+      });
     });
 
     it('should throw if FLAGS env var has invalid value', () => {
@@ -151,7 +170,7 @@ describe('make', () => {
 
     it('should cache the client after first access', () => {
       const createRawClient = createMockCreateRawClient();
-      process.env.FLAGS = 'vf_test_key';
+      process.env.FLAGS = 'vf_server_test_key';
 
       const { flagsClient } = make(createRawClient);
 
@@ -166,26 +185,26 @@ describe('make', () => {
 
     it('should use FLAGS env var to create default client', () => {
       const createRawClient = createMockCreateRawClient();
-      process.env.FLAGS = 'vf_env_key';
+      process.env.FLAGS = 'vf_server_env_key';
 
       const { flagsClient } = make(createRawClient);
       const _ = flagsClient.evaluate;
 
       expect(Controller).toHaveBeenCalledWith({
-        sdkKey: 'vf_env_key',
+        auth: expect.objectContaining({ sdkKey: 'vf_server_env_key' }),
       });
     });
 
     it('should support FLAGS as connection string', () => {
       const createRawClient = createMockCreateRawClient();
       process.env.FLAGS =
-        'flags:edgeConfigId=ecfg_123&edgeConfigToken=token&sdkKey=vf_flags_key';
+        'flags:edgeConfigId=ecfg_123&edgeConfigToken=token&sdkKey=vf_client_flags_key';
 
       const { flagsClient } = make(createRawClient);
       const _ = flagsClient.evaluate;
 
       expect(Controller).toHaveBeenCalledWith({
-        sdkKey: 'vf_flags_key',
+        auth: expect.objectContaining({ sdkKey: 'vf_client_flags_key' }),
       });
     });
   });
@@ -193,7 +212,7 @@ describe('make', () => {
   describe('resetDefaultFlagsClient', () => {
     it('should clear the cached client', () => {
       const createRawClient = createMockCreateRawClient();
-      process.env.FLAGS = 'vf_test_key';
+      process.env.FLAGS = 'vf_server_test_key';
 
       const { flagsClient, resetDefaultFlagsClient } = make(createRawClient);
 
@@ -211,24 +230,24 @@ describe('make', () => {
 
     it('should allow reconfiguration after reset', () => {
       const createRawClient = createMockCreateRawClient();
-      process.env.FLAGS = 'vf_first_key';
+      process.env.FLAGS = 'vf_server_first_key';
 
       const { flagsClient, resetDefaultFlagsClient } = make(createRawClient);
 
       // Access with first key
       const _ = flagsClient.evaluate;
       expect(Controller).toHaveBeenCalledWith({
-        sdkKey: 'vf_first_key',
+        auth: expect.objectContaining({ sdkKey: 'vf_server_first_key' }),
       });
 
       // Reset and change env
       resetDefaultFlagsClient();
-      process.env.FLAGS = 'vf_second_key';
+      process.env.FLAGS = 'vf_client_second_key';
 
       // Access again with new key
       const __ = flagsClient.initialize;
       expect(Controller).toHaveBeenCalledWith({
-        sdkKey: 'vf_second_key',
+        auth: expect.objectContaining({ sdkKey: 'vf_client_second_key' }),
       });
     });
   });
@@ -238,7 +257,7 @@ describe('make', () => {
       const createRawClient = createMockCreateRawClient();
       const { createClient } = make(createRawClient);
 
-      const client = createClient('vf_test_key');
+      const client = createClient('vf_server_test_key');
 
       // All methods should be callable
       await expect(client.initialize()).resolves.toBeUndefined();

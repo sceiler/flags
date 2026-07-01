@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Auth } from '../controller/auth';
 import { setRequestContext } from '../test-utils';
 import { type FlagsConfigReadEvent, UsageTracker } from './usage-tracker';
 
@@ -39,9 +40,18 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
+function createAuth(sdkKey = 'test-key'): Auth {
+  return {
+    sdkKey,
+    resolveToken: () => Promise.resolve(sdkKey),
+    resolveBundledDefinitionsLookup: () =>
+      Promise.resolve({ type: 'sdk-key', sdkKey }),
+  };
+}
+
 function createTracker(sdkKey = 'test-key') {
   return new UsageTracker({
-    sdkKey,
+    auth: createAuth(sdkKey),
     host: 'https://example.com',
     fetch: fetchMock,
   });
@@ -137,7 +147,7 @@ describe('UsageTracker', () => {
       fetchMock.mockImplementation(() => jsonResponse({ ok: true }));
 
       const tracker = new UsageTracker({
-        sdkKey: 'my-secret-key',
+        auth: createAuth('my-secret-key'),
         host: 'https://example.com',
         fetch: fetchMock,
       });
@@ -229,7 +239,7 @@ describe('UsageTracker', () => {
       );
 
       const tracker = new FreshUsageTracker({
-        sdkKey: 'test-key',
+        auth: createAuth('test-key'),
         host: 'https://example.com',
         fetch: fetchMock,
       });
@@ -267,7 +277,7 @@ describe('UsageTracker', () => {
       fetchMock.mockImplementation(() => jsonResponse({ ok: true }));
 
       const tracker = new FreshUsageTracker({
-        sdkKey: 'test-key',
+        auth: createAuth('test-key'),
         host: 'https://example.com',
         fetch: fetchMock,
       });
@@ -367,13 +377,13 @@ describe('UsageTracker', () => {
       });
 
       const tracker1 = new UsageTracker({
-        sdkKey: 'key-1',
+        auth: createAuth('key-1'),
         host: 'https://example.com',
         fetch: fetchMock,
       });
 
       const tracker2 = new UsageTracker({
-        sdkKey: 'key-2',
+        auth: createAuth('key-2'),
         host: 'https://example.com',
         fetch: fetchMock,
       });
@@ -436,6 +446,56 @@ describe('UsageTracker', () => {
 
       // 2 failed + 1 success = 3 total
       expect(requestCount).toBe(3);
+    });
+
+    it('should log a structured warning when all retries are exhausted', async () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0);
+      const consoleSpy = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+
+      fetchMock.mockResolvedValue(new Response('err', { status: 500 }));
+
+      const tracker = createTracker();
+      tracker.trackRead();
+      await tracker.flush();
+
+      // All 3 attempts fail; SDK logs an extra "Dropped" line
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      const droppedLogs = consoleSpy.mock.calls.filter(
+        ([msg]) =>
+          typeof msg === 'string' && msg.includes('Dropped 1 events after 3'),
+      );
+      expect(droppedLogs).toHaveLength(1);
+
+      consoleSpy.mockRestore();
+    });
+
+    it('should not log the exhaustion warning when a retry eventually succeeds', async () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0);
+      const consoleSpy = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+
+      let requestCount = 0;
+      fetchMock.mockImplementation(async () => {
+        requestCount++;
+        if (requestCount < 3) {
+          return new Response('err', { status: 500 });
+        }
+        return jsonResponse({ ok: true });
+      });
+
+      const tracker = createTracker();
+      tracker.trackRead();
+      await tracker.flush();
+
+      const droppedLogs = consoleSpy.mock.calls.filter(
+        ([msg]) => typeof msg === 'string' && msg.includes('Dropped'),
+      );
+      expect(droppedLogs).toHaveLength(0);
+
+      consoleSpy.mockRestore();
     });
   });
 

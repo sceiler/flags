@@ -1,5 +1,3 @@
-import type { ControllerInstance } from './controller-fns';
-
 /**
  * Options for stream connection behavior
  */
@@ -118,15 +116,24 @@ export type Source = {
 };
 
 /**
+ * Input for a single flag in a bulk evaluation call.
+ */
+export type BulkEvaluateInput<T = Value> = {
+  key: string;
+  defaultValue?: T;
+};
+
+/**
  * A client for Vercel Flags
  */
 export type FlagsClient<Entities = Record<string, unknown>> = {
   /**
-   * Origin information for this client (provider and sdkKey)
+   * Origin information for this client.
+   * sdkKey is only present when the client was explicitly created with one.
    */
   origin?: {
     provider: string;
-    sdkKey: string;
+    sdkKey?: string;
   };
   /**
    * Evaluate a feature flag
@@ -138,11 +145,27 @@ export type FlagsClient<Entities = Record<string, unknown>> = {
    * @param entities
    * @returns
    */
-  evaluate: <T = Value, E extends Entities = Entities>(
+  evaluate: <T = Value, E = Entities>(
     flagKey: string,
     defaultValue?: T,
     entities?: E,
   ) => Promise<EvaluationResult<T>>;
+  /**
+   * Evaluate multiple feature flags against the same entities in a single call.
+   *
+   * Avoids the per-flag overhead of separate `evaluate()` invocations (in particular,
+   * the parallel promises and repeated datafile reads they would entail).
+   *
+   * Requires initialize() to have been called and awaited first.
+   *
+   * @param flags Array of `{ key, defaultValue? }` entries to evaluate.
+   * @param entities Shared entities used for every flag in the bulk call.
+   * @returns Object mapping each key to its EvaluationResult.
+   */
+  bulkEvaluate: <T = Value, E = Entities>(
+    flags: BulkEvaluateInput<T>[],
+    entities?: E,
+  ) => Promise<Record<string, EvaluationResult<T>>>;
   /**
    * Retrieve the latest datafile during startup, and set up subscriptions if needed.
    */
@@ -249,7 +272,17 @@ export type FlagKey = string;
 export type VariantId = string;
 export type EnvironmentKey = string;
 export type SegmentId = string;
-export type Value = string | number | boolean;
+
+/**
+ * The value of a feature flag variant
+ */
+export type Value =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Value }
+  | Value[];
 
 export enum ResolutionReason {
   PAUSED = 'paused',
@@ -264,6 +297,8 @@ export enum OutcomeType {
   VALUE = 'value',
   /** When the outcome type was a split */
   SPLIT = 'split',
+  /** When the outcome type was a progressive rollout */
+  ROLLOUT = 'rollout',
 }
 
 /**
@@ -463,6 +498,40 @@ export namespace Original {
          * This variant will be used when the base attribute does not exist
          */
         defaultVariantId: VariantId;
+      }
+    | {
+        type: 'rollout';
+        /**
+         * Based on which attribute the traffic should be split
+         */
+        base: EntityAccessor;
+        /**
+         * Epoch ms when the rollout begins
+         */
+        startTimestamp: number;
+        /**
+         * The variant to roll away from
+         */
+        rollFromVariantId: VariantId;
+        /**
+         * The variant to roll towards
+         */
+        rollToVariantId: VariantId;
+        /**
+         * This variant will be used when the base attribute does not exist
+         */
+        defaultVariantId: VariantId;
+        /**
+         * Progressive rollout slots. Each slot has a promille value (0-100_000)
+         * representing the traffic for rollToVariant and a duration (how long
+         * it is served before moving to the next slot).
+         *       1 = 0.001%
+         *   1_000 =     1%
+         * 100_000 =   100%
+         *
+         * Once all slots are exhausted, the rollout is complete (100% rollToVariant).
+         */
+        slots: { promille: number; durationMs: number }[];
       };
 
   export type SegmentAllOutcome = {
@@ -653,6 +722,40 @@ export namespace Packed {
     defaultVariant: VariantIndex;
   };
 
+  export type RolloutOutcome = {
+    type: 'rollout';
+    /**
+     * Based on which attribute the traffic should be split.
+     */
+    base: EntityAccessor;
+    /**
+     * Epoch ms when the rollout begins.
+     */
+    startTimestamp: number;
+    /**
+     * Variant index to roll away from.
+     */
+    rollFromVariant: VariantIndex;
+    /**
+     * Variant index to roll towards.
+     */
+    rollToVariant: VariantIndex;
+    /**
+     * This variant will be used when the base attribute does not exist.
+     */
+    defaultVariant: VariantIndex;
+    /**
+     * Progressive rollout slots.
+     * Each tuple: [promille 0-100_000 for rollToVariant, durationMs (how long this slot is served)]
+     *       1 = 0.001%
+     *   1_000 =     1%
+     * 100_000 =   100%
+     *
+     * Once all slots are exhausted, the rollout is complete (100% rollToVariant).
+     */
+    slots: [number, number][];
+  };
+
   export type SegmentAllOutcome = 1;
 
   export type SegmentSplitOutcome = {
@@ -671,7 +774,7 @@ export namespace Packed {
 
   export type SegmentOutcome = SegmentAllOutcome | SegmentSplitOutcome;
 
-  export type Outcome = VariantIndex | SplitOutcome;
+  export type Outcome = VariantIndex | SplitOutcome | RolloutOutcome;
 
   // an array means it's an entity, the string "segment" means a segment
   export type EntityAccessor = (string | number)[];
