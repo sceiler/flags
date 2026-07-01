@@ -96,7 +96,7 @@ export const showBanner = flag<boolean, EntitiesType>({
 
 ## Flags Discovery Endpoint
 
-To enable the [Flags Explorer](https://vercel.com/docs/feature-flags/flags-explorer), create a discovery endpoint at `app/.well-known/vercel/flags/route.ts`:
+To enable the [Flags Explorer](https://vercel.com/docs/flags/flags-explorer), create a discovery endpoint at `app/.well-known/vercel/flags/route.ts`:
 
 ```ts
 import { createFlagsDiscoveryEndpoint } from "flags/next";

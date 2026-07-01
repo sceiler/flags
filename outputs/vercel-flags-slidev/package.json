@@ -1,0 +1,17 @@
+{
+  "name": "vercel-flags-demo-slidev",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "slidev slides.md --port 3030",
+    "build": "slidev build slides.md",
+    "export": "slidev export slides.md"
+  },
+  "dependencies": {
+    "@slidev/cli": "52.11.0",
+    "slidev-theme-vercel": "github:vercel/slidev-theme-vercel#main"
+  },
+  "devDependencies": {
+    "playwright-chromium": "1.56.1"
+  }
+}

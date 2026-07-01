@@ -1,4 +1,6 @@
+import { Suspense } from 'react';
 import { AddToCart } from '@/app/[code]/add-to-cart';
+import { MarketingBannerSlot } from '@/app/marketing-banner-slot';
 import { SummerSale } from '@/app/summer-sale';
 import { ImageGallery } from '@/components/image-gallery';
 import { Main } from '@/components/main';
@@ -21,6 +23,9 @@ export default async function Page(props: {
 
   return (
     <ProductDetailPageProvider>
+      <Suspense fallback={null}>
+        <MarketingBannerSlot />
+      </Suspense>
       <SummerSale show={showSummerBanner} />
       <Main>
         <div className="lg:grid lg:auto-rows-min lg:grid-cols-12 lg:gap-x-8">

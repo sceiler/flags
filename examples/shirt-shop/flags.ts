@@ -1,3 +1,4 @@
+import { vercelAdapter } from '@flags-sdk/vercel';
 import { flag } from 'flags/next';
 import { xxHash32 } from 'js-xxhash';
 import { type EvaluationContext, identify } from './lib/identify';
@@ -72,6 +73,15 @@ export const delayFlag = flag<number>({
   decide() {
     return this.defaultValue!;
   },
+});
+
+export const marketingBannerFlag = flag<boolean, EvaluationContext>({
+  key: 'marketing-banner',
+  description:
+    'Dashboard-controlled banner for demonstrating Vercel Flags targeting and rollouts',
+  defaultValue: false,
+  identify,
+  adapter: vercelAdapter,
 });
 
 export const productFlags = [

@@ -106,7 +106,7 @@ export const reflagAdapter: AdapterResponse = {
 /**
  * Get the provider data for the Reflag adapter.
  *
- * This function is used the the [Flags API endpoint](https://vercel.com/docs/workflow-collaboration/feature-flags/implement-flags-in-toolbar#creating-the-flags-api-endpoint) to load and emit your Reflag data.
+ * This function is used by the [Flags Discovery Endpoint](https://vercel.com/docs/flags/flags-explorer/getting-started#creating-the-flags-discovery-endpoint) to load and emit your Reflag data.
  *
  * ```ts
  * // .well-known/vercel/flags/route.ts

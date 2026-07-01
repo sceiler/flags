@@ -4,7 +4,9 @@ export function ProductHeader() {
   return (
     <div className="lg:col-span-5 lg:col-start-8">
       <div className="flex justify-between">
-        <h1 className="text-xl font-medium text-gray-900">Circles T-Shirt Deluxe</h1>
+        <h1 className="text-xl font-medium text-gray-900">
+          Circles T-Shirt Deluxe
+        </h1>
         <p className="text-xl font-medium text-gray-900">100.00 USD</p>
       </div>
       <ProductReviews />

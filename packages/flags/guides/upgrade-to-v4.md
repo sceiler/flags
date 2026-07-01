@@ -14,7 +14,7 @@ We recently renamed the [`@vercel/flags`](https://www.npmjs.com/package/@vercel/
 
 ## Adjust flags discovery endpoint
 
-Your application returns metadata about its feature flags to authenticated clients like the [Flags Explorer](https://vercel.com/docs/feature-flags/flags-explorer) through the flags discovery endpoint under `/.well-known/vercel/flags`.
+Your application returns metadata about its feature flags to authenticated clients like the [Flags Explorer](https://vercel.com/docs/flags/flags-explorer) through the flags discovery endpoint under `/.well-known/vercel/flags`.
 
 Flags Explorer now requires your flags discovery endpoint (`/.well-known/vercel/flags`) to return the version of your Flags SDK package as a `x-flags-sdk-version` response header for all successful responses. It is not required when responding with a 401 or other error codes.
 

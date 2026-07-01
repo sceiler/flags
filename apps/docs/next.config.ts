@@ -54,7 +54,7 @@ const config: NextConfig = {
       '/docs/getting-started/sveltekit': '/frameworks/sveltekit',
       '/docs/guides/dashboard-pages': '/frameworks/next/guides/dashboard-pages',
       '/docs/guides/marketing-pages': '/frameworks/next/guides/marketing-pages',
-      '/docs/vercel': 'https://vercel.com/docs/feature-flags',
+      '/docs/vercel': 'https://vercel.com/docs/flags',
 
       // -----------------------------------------------------------------------
       // Renamed adapters

@@ -25,7 +25,7 @@ The `@flags-sdk/reflag` provider package exports
 
 <LearnMore
   icon="arrow"
-  href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fvercel%2Fexamples%2Ftree%2Fmain%2Fflags-sdk/reflag&env=FLAGS_SECRET,REFLAG_SECRET_KEY&envDescription=The+FLAGS_SECRET+will+be+used+by+the+Flags+Explorer+to+securely+overwrite+feature+flags.+Must+be+32+random+bytes%2C+base64-encoded.+Use+the+generated+value+or+set+your+own.&envLink=https%3A%2F%2Fvercel.com%2Fdocs%2Fworkflow-collaboration%2Ffeature-flags%2Fsupporting-feature-flags%23flags_secret-environment-variable&project-name=reflag-flags-sdk-example&repository-name=reflag-flags-sdk-example"
+  href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fvercel%2Fexamples%2Ftree%2Fmain%2Fflags-sdk/reflag&env=FLAGS_SECRET,REFLAG_SECRET_KEY&envDescription=The+FLAGS_SECRET+will+be+used+by+the+Flags+Explorer+to+securely+overwrite+feature+flags.+Must+be+32+random+bytes%2C+base64-encoded.+Use+the+generated+value+or+set+your+own.&envLink=https%3A%2F%2Fvercel.com%2Fdocs%2Fflags%2Fflags-explorer%2Freference%23flags_secret-environment-variable&project-name=reflag-flags-sdk-example&repository-name=reflag-flags-sdk-example"
   target="_blank"
 >
   Deploy the Reflag template
@@ -146,7 +146,7 @@ View and override your Reflag feature toggles using the [Flags Explorer](https:/
 
 To make Flags Explorer aware of your Reflag features, you need to provide a route which Flags Explorer will load your experiment metadata from.
 
-Use the `getProviderData` function in your [Flags API endpoint](https://vercel.com/docs/workflow-collaboration/feature-flags/implement-flags-in-toolbar#creating-the-flags-api-endpoint) to load and emit your Reflag data.
+Use the `getProviderData` function in your [Flags Discovery Endpoint](https://vercel.com/docs/flags/flags-explorer/getting-started#creating-the-flags-discovery-endpoint) to load and emit your Reflag data.
 `getProviderData` takes a `ReflagClient` in the `options` object:
 
 ```ts title="app/.well-known/vercel/flags/route.ts#next"
