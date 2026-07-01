@@ -95,7 +95,7 @@ variant: title-space
   <div class="model-card blue">
     <div class="eyebrow">APP LAYER</div>
     <h2>Flags SDK</h2>
-    <p>Keys, defaults, options, evaluation logic, adapters, overrides, and exposure hooks.</p>
+    <p>Keys, defaults, options, evaluation logic, adapters, and overrides</p>
   </div>
   <div class="model-link">works with</div>
   <div class="model-card green">
@@ -223,14 +223,14 @@ Can still expose metadata to tools
 
 ```ts
 export const showSummerBannerFlag = flag<boolean, EvaluationContext>({
-  key: 'summer-sale',
-  description: 'Shows a bright yellow banner for a 20% discount',
-  defaultValue: false,
-  identify,
-  decide({ entities }) {
-    if (!entities || !entities.stableId) return this.defaultValue!;
-    return bucket(`${this.key}/${entities.stableId}`) === 1;
-  },
+    key: 'summer-sale',
+    description: 'Shows a bright yellow banner for a 20% discount',
+    defaultValue: false,
+    identify,
+    decide({ entities }) {
+        if (!entities || !entities.stableId) return this.defaultValue!;
+        return bucket(`${this.key}/${entities.stableId}`) === 1;
+    },
 });
 ```
 
@@ -265,16 +265,13 @@ Visitor receives the matching UI
 
 ```ts
 export async function proxy(request: NextRequest) {
-  const stableId = await getStableId();
-  const cartId = await getCartId();
-  const code = await precompute(productFlags);
+    const stableId = await getStableId();
+    const cartId = await getCartId();
+    const code = await precompute(productFlags);
 
-  const nextUrl = new URL(
-    `/${code}${request.nextUrl.pathname}${request.nextUrl.search}`,
-    request.url,
-  );
+    const nextUrl = new URL(`/${code}${request.nextUrl.pathname}${request.nextUrl.search}`, request.url);
 
-  return NextResponse.rewrite(nextUrl, { request, headers });
+    return NextResponse.rewrite(nextUrl, { request, headers });
 }
 ```
 
@@ -325,10 +322,10 @@ variant: title-3
 # Vercel Flags is the first-party provider
 
 ::s1-title::
-It competes with providers
+It is like LaunchDarkly or Statsig
 
 ::s1-body::
-Yes, Vercel Flags is Vercel's own runtime flag provider. It can cover the same provider role as LaunchDarkly, Statsig, or similar tools.
+Vercel Flags is Vercel's own runtime flag provider.
 
 ::s2-title::
 It does not replace app code
@@ -373,12 +370,11 @@ Adapter reads Vercel runtime policy
 
 ```ts
 export const marketingBannerFlag = flag<boolean, EvaluationContext>({
-  key: 'marketing-banner',
-  description:
-    'Dashboard-controlled banner for demonstrating Vercel Flags targeting and rollouts',
-  defaultValue: false,
-  identify,
-  adapter: vercelAdapter,
+    key: 'marketing-banner',
+    description: 'Dashboard-controlled banner for demonstrating Vercel Flags targeting and rollouts',
+    defaultValue: false,
+    identify,
+    adapter: vercelAdapter,
 });
 ```
 
@@ -409,9 +405,9 @@ The banner component must already exist in the app. Runtime flags choose a path;
 
 ```tsx
 export async function MarketingBannerSlot() {
-  const showMarketingBanner = await marketingBannerFlag();
+    const showMarketingBanner = await marketingBannerFlag();
 
-  return <MarketingBanner show={showMarketingBanner} />;
+    return <MarketingBanner show={showMarketingBanner} />;
 }
 ```
 
@@ -480,10 +476,7 @@ Merged data powers Toolbar UI
 
 ```ts
 export const GET = createFlagsDiscoveryEndpoint(async () => {
-  return mergeProviderData([
-    getProviderData(flags),
-    getVercelProviderData(flags),
-  ]);
+    return mergeProviderData([getProviderData(flags), getVercelProviderData(flags)]);
 }) as any;
 ```
 
@@ -520,96 +513,19 @@ Flags resolve for the route
 const values = await deserialize(productFlags, params.code);
 
 return (
-  <div className="bg-white">
-    <FreeDelivery show={showFreeDeliveryBanner} />
-    <Navigation />
-    {props.children}
-    <FlagValues values={values} />
-    <Footer />
-    <DevTools />
-  </div>
+    <div className="bg-white">
+        <FreeDelivery show={showFreeDeliveryBanner} />
+        <Navigation />
+        {props.children}
+        <FlagValues values={values} />
+        <Footer />
+        <DevTools />
+    </div>
 );
 ```
 
 <!--
 Mention that Toolbar is wired in root layout and next.config. The values bridge makes the session understandable in the browser.
--->
-
----
-layout: 5-open
-variant: title-space
----
-
-::title::
-
-# What the live demo should show
-
-::content::
-
-<div class="content-stack">
-<div class="demo-map">
-  <div class="demo-card blue">
-    <h3>SDK-only</h3>
-    <p>`summer-sale`, `free-delivery`, and `proceed-to-checkout-color` are defined and evaluated in code.</p>
-  </div>
-  <div class="demo-card green">
-    <h3>Vercel-backed</h3>
-    <p>`marketing-banner` is declared in code but controlled by Vercel Flags runtime policy.</p>
-  </div>
-  <div class="demo-card purple">
-    <h3>Explorer</h3>
-    <p>Toolbar inspects values and overrides individual flags for the current browser session.</p>
-  </div>
-</div>
-
-<div class="runline">
-  Demo sequence: reset stable ID -> show code bucket changes -> toggle dashboard flag -> override locally in Explorer.
-</div>
-</div>
-
-<!--
-This slide is the clean transition into the live application. Keep it visible while you switch windows if needed.
--->
-
----
-layout: 5-open
-variant: list-space
----
-
-::title::
-
-# Suggested live runbook
-
-::item-1::
-Open shirt-shop: banners and cart button color.
-
-::item-2::
-Reset Stable ID to show SDK-only bucketing.
-
-::item-3::
-Toggle `marketing-banner` in Vercel Flags.
-
-::item-4::
-Use Flags Explorer to override one value locally.
-
-::item-5::
-Open the discovery endpoint.
-
-::space::
-
-<div class="terminal">
-<div class="terminal-title">local setup</div>
-
-```bash
-vercel link
-vercel env pull
-pnpm -F shirt-shop dev
-```
-
-</div>
-
-<!--
-The demo message is: deploy independently, release deliberately, preview safely.
 -->
 
 ---
@@ -619,7 +535,7 @@ variant: grid-4
 
 ::title::
 
-# Common misconceptions to handle
+# Common questions
 
 ::s1-title::
 "Can I use the SDK alone?"
@@ -664,7 +580,6 @@ variant: title-space
   <div class="tree-node">Need deterministic flags in code only?<br><strong>Use Flags SDK standalone.</strong></div>
   <div class="tree-node">Need runtime rollout, targeting, or segments?<br><strong>Add Vercel Flags provider.</strong></div>
   <div class="tree-node">Need preview, QA, or debugging?<br><strong>Use Flags Explorer.</strong></div>
-  <div class="tree-node final">Most production demos use all three together.</div>
 </div>
 
 <!--

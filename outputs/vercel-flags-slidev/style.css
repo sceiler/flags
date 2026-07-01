@@ -7,6 +7,13 @@
   --border: #444444;
 }
 
+.slidev-toc,
+.slidev-toc-list,
+.slidev-toc-item,
+#slidev-goto-dialog {
+  display: none !important;
+}
+
 .model-grid {
   display: grid;
   grid-template-columns: 1fr 72px 1fr 72px 1fr;
